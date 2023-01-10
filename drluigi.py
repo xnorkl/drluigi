@@ -43,25 +43,22 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-class WebScraper: 
+class Image(object):
+
+    def __init__(self, filepath=None, exifdata=None, **kwargs):
+        self.filepath = filepath
+        self.exifdata = exifdata
+
+
+class WebScraper(object): 
     
-    def __init__(self):
-        self.query = None
-        self.header = None
-        self.directory = None
-        self.filepath = None
-        self.image_urls = None
-
-
-    def _set_query(self, query):
+    def __init__(self, query=None, header=None, language=None, location=None, search_engine=None, results=None):
         self.query = str(query)
-
-
-    def _set_header(self, header):
-        """ Adds a dict header to the WebScraper object. """
-        if header is None:  
-          header = {'User-Agent': 'Mozilla/5.0'}
         self.header = dict(header)
+        self.language = 'en' if language is None else str(language)
+        self.location = 'us' if location is None else str(location)
+        self.search_engine = 'Google Search' if search_engine is None else str(search_engine)
+        self.results = results
 
     
     def _set_directory(self, dir):
@@ -73,30 +70,47 @@ class WebScraper:
             self._set_directory(dir)
         
 
-    def _image_search(self):
+    def _search_url(self):
+
+        #     
+        query = "+".join(self.query.split())
+        base_url = f"https://www.google.com/search?"
+        params = {
+            "hl" : "en",
+            "gl" : "us",
+            "btnG" : "Google Search",
+            "tbm" : "isch",
+            "no_cache" : "true",
+            "num" : "10"
+        }
+        
+        return url
+
+
+    def _image_search(self, url):
         """ A query string and adds src URLs from the results page. """
 
         # Construct URL query
-        query = "+".join(self.query.split())
         url = f"https://www.google.com/search?hl=jp&q={query}&btnG=Google+Search*tbs=0&safe=off&tbm=isch"
     
         # Return HTML object as string.
-        response = requests.get(url, )
+        header = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, header)
         html = str(BeautifulSoup(response.content, features="lxml"))
     
         # Filter URL results
         pattern = r"src=\"(https://[a-zA-Z0-9-.?=&;:/]+)\""    
-        self.image_urls = re.findall(pattern, html)
+        return re.findall(pattern, html)
 
 
-    def _download_img(self):
+    def _download_img(self, urls):
         """ Download random image from image URLs """
         
-        # Get range of array and return random nth element in that range.
+        # Get range of array and return random element in that range.
         random = lambda l: l[randint(0,(len(l) - 1))]
 
         # Stream image url
-        res = requests.get(random(self.image_urls), stream = True)
+        res = requests.get(random(urls), stream = True)
 
         # Get possible extensions using mimetypes 
         content_type = res.headers.get('Content-Type')
@@ -122,8 +136,8 @@ class WebScraper:
         self._set_query(query)
         self._set_header(header)
         self._set_directory(IMAGEDIR)
-        self._image_search()
-        self._download_img()
+        urls = self._image_search()
+        self._download_img(urls)
 
         
 class Image:
@@ -209,6 +223,8 @@ def inject(filename, payload, method):
     image._set_filepath(filename)
     image._set_injection_method(method)        
     image._load_exif_data()
+
+    # Call by reference. 
     getattr(image, image.injection_method)(payload)
     
     print(json.dumps(image.__dict__))
