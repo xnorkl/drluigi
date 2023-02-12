@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
 from enum import Enum
 from exiftool import ExifToolHelper
+from glob import glob
 from io import BytesIO
 from pyfiglet import Figlet
 from random import randint
@@ -151,12 +152,35 @@ class Google(Search):
             self.url = self.smallest_image_url(urls)
 
 
-def load(filepath):
+def load(filepath, filetype):
+    """Load a file at the given filepath.
+       Returns an object of a given class based on filetype.
+    """
+    
+    filepath = glob(f"{os.path.abspath(filepath)}.*")[0]
+    return _select(filepath, filetype)
 
-    absbpath = os.path.abspath(filepath)
 
-    with open(absbpath, 'rb') as f:
-        return f
+def _select(filepath, filetype):
+    """Helper function to return an object by"""
+
+    if filetype == "image":
+        obj = Image(filepath)
+        print(obj.filepath)
+    elif filetype == "pdf":
+        print("Nonexistant feature")
+        exit()
+        # obj = Pdf(filepath)
+    elif filetype == "rtf":
+        print("Nonexistant feature")
+        exit()
+        # obj = Rtf(filepath)
+    else:
+        print("Nonexistant feature")
+        exit()
+
+    return obj    
+
 
             
 def search(query, searchtype, searchmode, searchdir):
@@ -185,21 +209,7 @@ def search(query, searchtype, searchmode, searchdir):
         with open(filepath, 'wb') as f:
             shutil.copyfileobj(response.raw, f)
 
-    if searchtype == "image":
-        obj = Image(filepath)
-    elif searchtype == "pdf":
-        print("Nonexistant feature")
-        exit()
-        # obj = Pdf(filepath)
-    elif searchtype == "rtf":
-        print("Nonexistant feature")
-        exit()
-        # obj = Rtf(filepath)
-    else:
-        print("Nonexistant feature")
-        exit()    
-
-    return obj 
+    return select(filepath, searchtype) 
 
 
 def inject(obj, injection_method, payload):
@@ -235,13 +245,19 @@ if __name__ == "__main__":
 
     method = (args._get_kwargs()[-1][-1])
 
+    # TODO bad logic. search(...searchdir) expects a dir not a filepath.
     if args.output is None:
         outfile = os.getcwd()
-    if args.query:
-        artifact = search(args.query, args.type, args.searchmode, outfile)
+    else:
+        outfile = args.output
 
+    if args.query and not args.file:
+        obj = search(args.query, args.type, args.searchmode, outfile)
+    elif args.file and not args.query:
+        obj = load(args.file, args.type)
+        print(obj)
     # TODO need a function for args.url
-    result = inject(artifact, method, args.payload)
+    result = inject(obj, method, args.payload)
 
     if args.type == 'image': 
         output = [[k,v] for k, v in result.exifdata.items()]
